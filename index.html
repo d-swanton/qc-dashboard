@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QC Build Schedule Dashboard</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0f1012;
+    --surface: #1a1c20;
+    --surface-raised: #22252b;
+    --border: rgba(255,255,255,0.07);
+    --border-strong: rgba(255,255,255,0.13);
+    --text: #e8e9eb;
+    --text-secondary: #8a8f99;
+    --text-muted: #555b66;
+    --red: #e05252;
+    --red-bg: rgba(224,82,82,0.12);
+    --red-border: rgba(224,82,82,0.25);
+    --amber: #d48f3a;
+    --amber-bg: rgba(212,143,58,0.12);
+    --amber-border: rgba(212,143,58,0.25);
+    --blue: #4a90d4;
+    --blue-bg: rgba(74,144,212,0.12);
+    --blue-border: rgba(74,144,212,0.25);
+    --green: #4aad7a;
+    --green-bg: rgba(74,173,122,0.12);
+    --green-border: rgba(74,173,122,0.25);
+    --mono: 'Courier New', Courier, monospace;
+    --radius: 6px;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  .page { max-width: 1400px; margin: 0 auto; padding: 28px 32px 48px; }
+
+  .header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 28px; gap: 16px; }
+  .site-label { font-size: 11px; font-weight: 600; letter-spacing: 0.12em; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; }
+  .page-title { font-size: 26px; font-weight: 600; color: var(--text); letter-spacing: -0.4px; }
+  .header-right { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; flex-shrink: 0; }
+  .last-updated { font-size: 12px; color: var(--text-muted); }
+  .last-updated span { color: var(--text-secondary); }
+
+  .btn-refresh {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--surface-raised); border: 1px solid var(--border-strong);
+    color: var(--text-secondary); font-size: 13px; padding: 7px 14px;
+    border-radius: var(--radius); cursor: pointer; transition: all 0.15s;
+  }
+  .btn-refresh:hover { border-color: var(--blue); color: var(--blue); }
+  .btn-refresh svg { width: 14px; height: 14px; transition: transform 0.15s; }
+  .btn-refresh.loading svg { animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 28px; }
+  .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; display: flex; flex-direction: column; gap: 6px; }
+  .kpi.alert { border-color: var(--red-border); background: var(--red-bg); }
+  .kpi-label { font-size: 11px; font-weight: 500; color: var(--text-muted); letter-spacing: 0.06em; text-transform: uppercase; }
+  .kpi-val { font-size: 28px; font-weight: 600; line-height: 1; color: var(--text); }
+  .kpi.alert .kpi-val { color: var(--red); }
+  .kpi-sub { font-size: 12px; color: var(--text-muted); }
+
+  .section { margin-bottom: 28px; }
+  .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .section-title { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-secondary); }
+  .section-count { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: var(--surface-raised); color: var(--text-muted); }
+
+  .table-wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; }
+  thead { background: var(--surface); }
+  th { text-align: left; font-size: 11px; font-weight: 600; color: var(--text-muted); letter-spacing: 0.06em; text-transform: uppercase; padding: 10px 14px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  tbody tr { border-bottom: 1px solid var(--border); transition: background 0.1s; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: var(--surface-raised); }
+  td { padding: 10px 14px; vertical-align: middle; }
+  td.pn { font-family: var(--mono); font-size: 12px; color: var(--blue); white-space: nowrap; }
+  td.desc { color: var(--text-secondary); font-size: 13px; }
+  td.qty { font-weight: 600; font-family: var(--mono); font-size: 13px; text-align: right; }
+  td.qty.negative { color: var(--red); }
+  td.qty.neutral { color: var(--text-secondary); }
+  td.date { font-family: var(--mono); font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+  .badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 4px; white-space: nowrap; }
+  .badge-high   { background: var(--red-bg);   color: var(--red);   border: 1px solid var(--red-border); }
+  .badge-medium { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-border); }
+  .badge-low    { background: var(--blue-bg);  color: var(--blue);  border: 1px solid var(--blue-border); }
+
+  .state-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 32px; text-align: center; color: var(--text-muted); font-size: 13px; }
+  .state-box.error { border-color: var(--red-border); color: var(--red); }
+  .state-box strong { display: block; font-size: 15px; margin-bottom: 6px; color: inherit; }
+
+  .status-bar { display: flex; align-items: center; gap: 10px; margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-muted); }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+  .status-dot.error { background: var(--red); }
+  .status-dot.loading { background: var(--amber); animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="header">
+    <div class="header-left">
+      <div class="site-label">Warehouse Maggots · Quality Control</div>
+      <h1 class="page-title">Build Schedule — Shortage Dashboard</h1>
+    </div>
+    <div class="header-right">
+      <div class="last-updated">Last updated: <span id="last-updated">—</span></div>
+      <button class="btn-refresh" id="btn-refresh" onclick="loadData()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+          <path d="M21 3v5h-5"/>
+          <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+          <path d="M8 16H3v5"/>
+        </svg>
+        Refresh
+      </button>
+    </div>
+  </div>
+
+  <div class="kpi-row">
+    <div class="kpi alert">
+      <div class="kpi-label">Negative on-hand</div>
+      <div class="kpi-val" id="k-shortages">—</div>
+      <div class="kpi-sub">parts below zero</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Earliest shortage</div>
+      <div class="kpi-val" id="k-earliest" style="font-size:18px; padding-top:5px;">—</div>
+      <div class="kpi-sub">first negative date</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">NPI parts</div>
+      <div class="kpi-val" id="k-npi">—</div>
+      <div class="kpi-sub">new product intro</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">First articles</div>
+      <div class="kpi-val" id="k-fai">—</div>
+      <div class="kpi-sub">pending inspection</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header">
+      <div class="section-title">Parts driven negative by build schedule</div>
+      <div class="section-count" id="shortage-count">0</div>
+    </div>
+    <div id="shortage-container">
+      <div class="state-box"><strong>Loading…</strong>Fetching shortage data</div>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">NPI parts</div>
+        <div class="section-count" id="npi-count">0</div>
+      </div>
+      <div id="npi-container">
+        <div class="state-box"><strong>Loading…</strong></div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">First articles</div>
+        <div class="section-count" id="fai-count">0</div>
+      </div>
+      <div id="fai-container">
+        <div class="state-box"><strong>Loading…</strong></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="status-bar">
+    <div class="status-dot loading" id="status-dot"></div>
+    <span id="status-msg">Connecting to SharePoint…</span>
+  </div>
+
+</div>
+<script>
+const BASE = "https://liveqordiecom.sharepoint.com/sites/WarehouseMaggots/_api/lists/getbytitle";
+const HEADERS = { "Accept": "application/json;odata=verbose" };
+
+// Convert Excel serial date (e.g. 46268) or ISO string to readable date
+function formatDate(val) {
+  if (!val) return '—';
+  const n = parseFloat(val);
+  if (!isNaN(n) && n > 40000) {
+    const d = new Date(Math.round((n - 25569) * 86400 * 1000));
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+  }
+  const d = new Date(val);
+  if (!isNaN(d)) return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return val;
+}
+
+function priorityBadge(p) {
+  if (!p) return '—';
+  const v = String(p).trim().toLowerCase();
+  if (v === 'high')   return '<span class="badge badge-high">High</span>';
+  if (v === 'medium') return '<span class="badge badge-medium">Medium</span>';
+  if (v === 'low')    return '<span class="badge badge-low">Low</span>';
+  return `<span class="badge badge-low">${p}</span>`;
+}
+
+function setStatus(state, msg) {
+  const dot = document.getElementById('status-dot');
+  dot.className = 'status-dot' + (state === 'ok' ? '' : state === 'error' ? ' error' : ' loading');
+  document.getElementById('status-msg').textContent = msg;
+}
+
+async function fetchList(name) {
+  const url = `${BASE}('${encodeURIComponent(name)}')/items?$orderby=ID asc&$top=5000`;
+  const res = await fetch(url, { headers: HEADERS, credentials: 'include' });
+  if (!res.ok) throw new Error(`${name}: HTTP ${res.status}`);
+  const data = await res.json();
+  return data.d.results;
+}
+
+function renderShortages(rows) {
+  const container = document.getElementById('shortage-container');
+  document.getElementById('shortage-count').textContent = rows.length;
+  document.getElementById('k-shortages').textContent = rows.length;
+
+  if (!rows.length) {
+    container.innerHTML = '<div class="state-box"><strong>No shortages</strong>All parts are at or above zero.</div>';
+    document.getElementById('k-earliest').textContent = '—';
+    return;
+  }
+
+  // Find earliest date
+  const serials = rows.map(r => parseFloat(r.FirstNegativeDate)).filter(n => !isNaN(n));
+  if (serials.length) {
+    document.getElementById('k-earliest').textContent = formatDate(Math.min(...serials));
+  }
+
+  // Sort by earliest date, then worst qty
+  rows.sort((a, b) => {
+    const da = parseFloat(a.FirstNegativeDate) || 0;
+    const db = parseFloat(b.FirstNegativeDate) || 0;
+    if (da !== db) return da - db;
+    return (parseFloat(a.OnHandQty) || 0) - (parseFloat(b.OnHandQty) || 0);
+  });
+
+  const tbody = rows.map(r => {
+    const qty = parseFloat(r.OnHandQty);
+    return `<tr>
+      <td class="pn">${r.Title || '—'}</td>
+      <td class="desc">${r.Description || '—'}</td>
+      <td class="qty ${qty < 0 ? 'negative' : 'neutral'}">${isNaN(qty) ? '—' : qty}</td>
+      <td class="date">${formatDate(r.FirstNegativeDate)}</td>
+    </tr>`;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Part number</th>
+          <th>Description</th>
+          <th style="text-align:right">Qty in QC</th>
+          <th>First negative date</th>
+        </tr></thead>
+        <tbody>${tbody}</tbody>
+      </table>
+    </div>`;
+}
+
+function renderSideTable(rows, containerId, countId, kpiId) {
+  const container = document.getElementById(containerId);
+  document.getElementById(countId).textContent = rows.length;
+  if (kpiId) document.getElementById(kpiId).textContent = rows.length;
+
+  if (!rows.length) {
+    container.innerHTML = '<div class="state-box"><strong>No entries</strong></div>';
+    return;
+  }
+
+  const tbody = rows.map(r => {
+    const qty = parseFloat(r.OnHandQty);
+    return `<tr>
+      <td class="pn">${r.Title || '—'}</td>
+      <td class="desc">${r.Description || '—'}</td>
+      <td class="qty ${qty < 0 ? 'negative' : 'neutral'}">${isNaN(qty) ? '—' : qty}</td>
+      <td>${priorityBadge(r.Priority)}</td>
+    </tr>`;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Part number</th>
+          <th>Description</th>
+          <th style="text-align:right">Qty in QC</th>
+          <th>Priority</th>
+        </tr></thead>
+        <tbody>${tbody}</tbody>
+      </table>
+    </div>`;
+}
+
+async function loadData() {
+  const btn = document.getElementById('btn-refresh');
+  btn.classList.add('loading');
+  setStatus('loading', 'Fetching data from SharePoint…');
+
+  try {
+    const [shortages, npi, fai] = await Promise.all([
+      fetchList('QC Shortages'),
+      fetchList('NPI'),
+      fetchList('FAI')
+    ]);
+
+    renderShortages(shortages);
+    renderSideTable(npi, 'npi-container', 'npi-count', 'k-npi');
+    renderSideTable(fai, 'fai-container', 'fai-count', 'k-fai');
+
+    const now = new Date().toLocaleString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' });
+    document.getElementById('last-updated').textContent = now;
+    setStatus('ok', `Data loaded · ${shortages.length} shortages · ${npi.length} NPI · ${fai.length} FAI`);
+  } catch (err) {
+    setStatus('error', `Failed to load — ${err.message}. Make sure you are signed into Microsoft 365 in this browser.`);
+    ['shortage-container','npi-container','fai-container'].forEach(id => {
+      document.getElementById(id).innerHTML = `<div class="state-box error"><strong>Could not load data</strong>${err.message}</div>`;
+    });
+    ['k-shortages','k-earliest','k-npi','k-fai'].forEach(id => {
+      document.getElementById(id).textContent = '—';
+    });
+  } finally {
+    btn.classList.remove('loading');
+  }
+}
+
+loadData();
+</script>
+</body>
+</html>
